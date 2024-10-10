@@ -21,3 +21,8 @@ See
 target/release/git-subdir --help
 ```
 for options.
+
+## TODO
+
+- Support gitlab urls
+- Write files relative to given link, rather than repo root (to avoid extra directory layers)
