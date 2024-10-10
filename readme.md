@@ -8,19 +8,20 @@ Command line tool to download subdirectories from github.
 cargo build --release
 ```
 
-This downloads dependencies and builds the binary `target/release/git-subdir`.
+This downloads dependencies and builds the executable `target/release/git-subdir`, which 
+you may want to move or symlink to a location in your `PATH`
 
 ## Usage
 
-For example,
+For example (using the `git-subdir` executable),
 ```
-target/release/git-subdir https://github.com/keziah55/git-subdir/tree/main/src
+git-subdir https://github.com/keziah55/git-subdir/tree/main/src
 ```
 downloads just the `src` directory from this repo.
 
 See
 ```
-target/release/git-subdir --help
+git-subdir --help
 ```
 for options.
 
