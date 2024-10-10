@@ -8,7 +8,9 @@ Command line tool to download subdirectories from github.
 cargo build --release
 ```
 
-This builds the binary `target/release/git-subdir`.
+This downloads dependencies and builds the binary `target/release/git-subdir`.
+
+## Usage
 
 For example,
 ```
