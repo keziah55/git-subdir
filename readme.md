@@ -12,8 +12,9 @@ This builds the binary `target/release/git-subdir`.
 
 For example,
 ```
-target/release/git-subdir 
+target/release/git-subdir https://github.com/keziah55/git-subdir/tree/main/src
 ```
+downloads just the `src` directory from this repo.
 
 See
 ```
