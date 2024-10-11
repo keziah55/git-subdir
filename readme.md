@@ -23,7 +23,7 @@ See
 ```
 git-subdir --help
 ```
-for options.
+for additional options.
 
 ## TODO
 
