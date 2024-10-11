@@ -10,7 +10,7 @@ use std::{
 #[derive(Parser)]
 #[command(version = "0.1")]
 #[command(about="download a subdirectory from github repo", long_about=None)]
-pub struct Cli {
+struct Cli {
     /// Github url
     url: String,
 
@@ -113,12 +113,31 @@ impl fmt::Display for GitHubUrl {
     }
 }
 
+/// Make directory.
+/// 
+/// # Arguments
+/// 
+/// * `path` - Dir path to make
+/// 
+/// # Panics
+/// 
+/// If failed to make directory.
 fn make_dir(path: &Path) {
     fs::create_dir_all(path)
         .unwrap_or_else(|_| panic!("Could not create dir '{}'", path.to_str().unwrap()));
 }
 
-fn get_git_dir(
+/// Download all items in github directory.
+/// 
+/// Note this function is called recursively.
+/// 
+/// # Arguments
+/// 
+/// * `url` - [`GitHubUrl`] struct pointing to directory.
+/// * `output` - Directory to write to.
+/// * `ignore_subdirs` - If `true`, don't download sub directories.
+/// * `relative_to` - If `Some(GithubUrl)`, write relative to url. Otherwise, write files relative to repo root.
+fn get_subdir(
     url: &GitHubUrl,
     output_path: &PathBuf,
     ignore_subdirs: bool,
@@ -127,13 +146,14 @@ fn get_git_dir(
     // note: using blocking instead of async because this function is called recursively
     let text = reqwest::blocking::get(url.url()).unwrap().text().unwrap();
 
+    // find table of items in html
     let document = Html::parse_document(&text);
     let selector =
         Selector::parse(r#"script[type="application/json"][data-target="react-app.embeddedData"]"#)
             .unwrap();
     for title in document.select(&selector) {
         let v: Value = serde_json::from_str(&title.inner_html()).unwrap();
-
+        // get vector of items
         let items = v["payload"]["tree"]["items"]
             .as_array()
             .unwrap()
@@ -146,6 +166,18 @@ fn get_git_dir(
     }
 }
 
+/// Download item.
+/// 
+/// If item is a file, simply download it. If it is a directory, download all contents
+/// (unless `ignore_subdirs` is true).
+/// 
+/// # Arguments
+/// 
+/// * `base_url` - [`GitHubUrl`] to download.
+/// * `item_info` - Map of info about the item to be downloaded.
+/// * `output_path` - Path to write to.
+/// * `ignore_subdirs` - If `true`, don't download anything if item is a directory.
+/// * `relative_to` - Optional url to write relative path to.
 fn download(
     base_url: &GitHubUrl,
     item_info: &serde_json::Map<String, serde_json::Value>,
@@ -183,7 +215,7 @@ fn download(
         "file" => download_file(base_url, &filename),
         "directory" => {
             if !ignore_subdirs {
-                get_git_dir(&url, output_path, ignore_subdirs, relative_to)
+                get_subdir(&url, output_path, ignore_subdirs, relative_to)
             }
         }
         "symlink_file" => {
@@ -196,6 +228,12 @@ fn download(
     }
 }
 
+/// Download given file
+/// 
+/// # Arguments
+/// 
+/// * `url` - [`GitHubUrl`] struct. This function gets the raw version of the url.
+/// * `filename` - Path to write to.
 fn download_file(url: &GitHubUrl, filename: &PathBuf) {
     let raw_url = url.as_raw_url();
 
@@ -214,10 +252,10 @@ fn download_file(url: &GitHubUrl, filename: &PathBuf) {
 /// 
 /// # Arguments
 /// 
-/// * `url` - String pointing directory in github repo
+/// * `url` - String pointing directory in github repo.
 /// * `output` - Optional directory to write to. If `None`, inferred from url.
 /// * `ignore_subdirs` - If `true`, don't download sub directories.
-/// * `preserve_path_structure` - If `true`, 
+/// * `preserve_path_structure` - If `true`, write files relative to repo root. Otherwise, write relative to url.
 pub fn get_git_subdir(
     url: &String,
     output: Option<String>,
@@ -243,7 +281,7 @@ pub fn get_git_subdir(
         Some(&url)
     };
 
-    get_git_dir(&url, &output_path, ignore_subdirs, relative_to);
+    get_subdir(&url, &output_path, ignore_subdirs, relative_to);
 }
 
 fn main() {
