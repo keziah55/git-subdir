@@ -62,10 +62,13 @@ impl GitHubUrl {
 
     /// Return url to directory
     pub fn url(&self) -> String {
-        format!("https://github.com/{}/{}/tree/{}/{}", self.username,
-        self.repo_name,
-        self.branch,
-        self.path.to_str().unwrap())
+        format!(
+            "https://github.com/{}/{}/tree/{}/{}",
+            self.username,
+            self.repo_name,
+            self.branch,
+            self.path.to_str().unwrap()
+        )
     }
 
     pub fn join(&self, part: &str) -> GitHubUrl {
@@ -132,7 +135,6 @@ fn download(
     // currently writes files like 'tracks/activities/test/__init__.py'
     // so find a nice way of subtracting the end of the url from the beginning of the path
 
-    // let url = format!("{}/{}", base_url.clone(), item_name);
     let url = base_url.join(item_name);
 
     match item_type {
@@ -147,7 +149,7 @@ fn download(
 }
 
 fn download_file(url: &GitHubUrl, item_path: &str, output_path: &PathBuf) {
-    let raw_url = url.as_raw_url(); //format!("{}?raw=true", url.clone());
+    let raw_url = url.as_raw_url();
 
     let text = reqwest::blocking::get(raw_url).unwrap().text().unwrap();
 
@@ -198,7 +200,7 @@ fn test_default_args() {
         assert!(expected_path.join(filename).exists());
     }
 
-    
+    fs::remove_dir_all(expected_path).unwrap();
 }
 
 #[test]
@@ -206,15 +208,53 @@ fn test_custom_output_path() {
     let url = String::from("https://github.com/keziah55/git-subdir/tree/main/src");
 
     let output_path = PathBuf::from("tmp_test");
-    let mut expected_path = output_path.clone();
+    let expected_path = output_path.clone();
     let output_path_arg = Some(output_path.into_os_string().into_string().unwrap());
-
 
     get_from_cli(&url, output_path_arg, false);
 
     assert!(expected_path.exists());
+    let filepath = expected_path.join("src/main.rs");
+    assert!(filepath.exists());
 
-    expected_path.push("src/main.rs");
+    fs::remove_dir_all(expected_path).unwrap();
+}
+
+#[test]
+fn test_ignore_subdirs() {
+    let url = String::from("https://github.com/keziah55/pick/tree/main/mediabrowser");
+
+    get_from_cli(&url, None, true);
+
+    let output_path = PathBuf::from("mediabrowser");
+    let expected_path = output_path.clone();
     assert!(expected_path.exists());
+    for item in fs::read_dir(expected_path).unwrap() {
+        let p = item.unwrap().path();
+        assert!(!p.is_dir());
+        assert_eq!(p.extension().unwrap(), "py");
+    }
 
+    fs::remove_dir_all(output_path).unwrap();
+}
+
+#[test]
+fn test_relative_path() {
+    let url = String::from(
+        "https://github.com/keziah55/pick/tree/main/mediabrowser/templates/mediabrowser",
+    );
+
+    let output_path = PathBuf::from("tmp_test");
+    let expected_path = output_path.clone();
+    let output_path_arg = Some(output_path.clone().into_os_string().into_string().unwrap());
+
+    get_from_cli(&url, output_path_arg, false);
+
+    for item in fs::read_dir(expected_path).unwrap() {
+        let p = item.unwrap().path();
+        assert!(!p.is_dir());
+        assert_eq!(p.extension().unwrap(), "html");
+    }
+
+    fs::remove_dir_all(output_path).unwrap();
 }
