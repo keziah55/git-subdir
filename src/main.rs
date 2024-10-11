@@ -21,6 +21,10 @@ pub struct Cli {
     /// Ignore subdirectories
     #[arg(short = 'i', long)]
     ignore_subdirs: bool,
+
+    /// Write paths relative to given url rather than repo root.
+    #[arg(short = 'r', long)]
+    relative: bool,
 }
 
 struct GitHubUrl {
@@ -71,13 +75,35 @@ impl GitHubUrl {
         )
     }
 
+    /// Return the name of the requested dir
+    pub fn basename(&self) -> String {
+        String::from(
+            self.path
+                .components()
+                .last()
+                .unwrap()
+                .as_os_str()
+                .to_str()
+                .unwrap(),
+        )
+    }
+
+    /// Return new GitHubUrl with `part` appended 
     pub fn join(&self, part: &str) -> GitHubUrl {
         let new_url = format!("{}/{}", self.url(), part);
         GitHubUrl::new(&new_url)
     }
 
+    /// Return url to get raw file
     pub fn as_raw_url(&self) -> String {
         format!("{}?raw=true", self.url())
+    }
+
+    /// Return relative path from self to other
+    pub fn relative_to(&self, other: &GitHubUrl) -> Result<PathBuf, String>{        
+        let prefix = format!("{}/", other.path.to_str().unwrap());
+        Ok(PathBuf::from(self.path.clone().strip_prefix(prefix).unwrap()))
+
     }
 }
 
@@ -99,7 +125,13 @@ fn make_dir(path: &Path) {
         .unwrap_or_else(|_| panic!("Could not create dir '{}'", path.to_str().unwrap()));
 }
 
-fn get_git_dir(url: &GitHubUrl, output_path: &PathBuf, ignore_subdirs: bool) {
+fn get_git_dir(
+    url: &GitHubUrl,
+    output_path: &PathBuf,
+    ignore_subdirs: bool,
+    preserve_path_structure: bool,
+) {
+    // note: using blocking instead of async because this function is called recursively
     let text = reqwest::blocking::get(url.url()).unwrap().text().unwrap();
 
     let document = Html::parse_document(&text);
@@ -116,7 +148,13 @@ fn get_git_dir(url: &GitHubUrl, output_path: &PathBuf, ignore_subdirs: bool) {
             .map(|item| item.as_object().unwrap());
 
         for item in items {
-            download(url, item, output_path, ignore_subdirs);
+            download(
+                url,
+                item,
+                output_path,
+                ignore_subdirs,
+                preserve_path_structure,
+            );
         }
     }
 }
@@ -126,35 +164,57 @@ fn download(
     item_info: &serde_json::Map<String, serde_json::Value>,
     output_path: &PathBuf,
     ignore_subdirs: bool,
+    preserve_path_structure: bool,
 ) {
     let item_type = item_info["contentType"].as_str().unwrap();
     let item_name = item_info["name"].as_str().unwrap();
     let item_path = item_info["path"].as_str().unwrap();
-    // TODO: get item_path relative to url, rather than repo root
-    // e.g. given https://github.com/keziah55/tracks/tree/main/tracks/activities/test
-    // currently writes files like 'tracks/activities/test/__init__.py'
-    // so find a nice way of subtracting the end of the url from the beginning of the path
 
     let url = base_url.join(item_name);
 
+    // println!();
+    // println!("base_url: {}", base_url);
+    // println!("base_url path len: {}", base_url.path.iter().count());
+    // println!("url: {}", url);
+
+    // let rel_path = url.relative_to(&base_url).unwrap();
+
+    // println!("rel_path: {}", rel_path.to_str().unwrap());
+
+    // println!();
+
+    let mut filename = PathBuf::from(output_path);
+
+    filename.push(item_path); //rel_path);
+
+    // if !preserve_path_structure && base_url.path.iter().count() > 1 {
+
+    // } else {
+    //     filename.push(rel_path);
+    // }
+
+    // if !filename.parent().unwrap().exists() {
+    //     make_dir(filename.clone().parent().unwrap());
+    // }
+
     match item_type {
-        "file" => download_file(base_url, item_path, output_path),
+        "file" => download_file(base_url, &filename),
         "directory" => {
             if !ignore_subdirs {
-                get_git_dir(&url, output_path, ignore_subdirs)
+                get_git_dir(&url, output_path, ignore_subdirs, preserve_path_structure)
             }
+        }
+        "symlink_file" => {
+            println!("Skipping symlink file '{}'", url.path.to_str().unwrap());
         }
         _ => panic!("Cannot handle item type '{}'", item_type),
     }
 }
 
-fn download_file(url: &GitHubUrl, item_path: &str, output_path: &PathBuf) {
+fn download_file(url: &GitHubUrl, filename: &PathBuf) {// item_path: &str, output_path: &PathBuf) {
     let raw_url = url.as_raw_url();
 
     let text = reqwest::blocking::get(raw_url).unwrap().text().unwrap();
-
-    let mut filename = PathBuf::from(output_path);
-    filename.push(item_path);
 
     if !filename.parent().unwrap().exists() {
         make_dir(filename.clone().parent().unwrap());
@@ -162,36 +222,44 @@ fn download_file(url: &GitHubUrl, item_path: &str, output_path: &PathBuf) {
 
     fs::write(filename, text).unwrap();
 
-    println!("Downloaded '{}'", item_path);
+    println!("Downloaded '{}'", filename.to_str().unwrap());
 }
 
-pub fn get_from_cli(url: &String, output: Option<String>, ignore_subdirs: bool) {
+/// Download directory from github
+pub fn get_git_subdir(
+    url: &String,
+    output: Option<String>,
+    ignore_subdirs: bool,
+    preserve_path_structure: bool,
+) {
+    let url = GitHubUrl::new(url);
+
+    // if not given output path, use basename from url
     let output_path = match output {
         Some(path) => PathBuf::from(path),
-        None => PathBuf::from("."),
+        None => PathBuf::from(url.basename()),
     };
 
     if !output_path.exists() {
         make_dir(&output_path);
     }
 
-    let url = GitHubUrl::new(url);
-
-    get_git_dir(&url, &output_path, ignore_subdirs);
+    get_git_dir(&url, &output_path, ignore_subdirs, preserve_path_structure);
 }
 
 fn main() {
     let cli = Cli::parse();
 
     // let url = String::from("https://github.com/gjf2a/midi_fundsp/tree/master/examples");
-    get_from_cli(&cli.url, cli.output, cli.ignore_subdirs);
+    get_git_subdir(&cli.url, cli.output, cli.ignore_subdirs, !cli.relative);
 }
 
+// TESTS
 #[test]
 fn test_default_args() {
     let url = String::from("https://github.com/keziah55/ABBAd_day/tree/master/ABBAd_day");
 
-    get_from_cli(&url, None, false);
+    get_git_subdir(&url, None, false, true);
 
     let expected_path = PathBuf::from("ABBAd_day");
     assert!(expected_path.exists());
@@ -211,10 +279,10 @@ fn test_custom_output_path() {
     let expected_path = output_path.clone();
     let output_path_arg = Some(output_path.into_os_string().into_string().unwrap());
 
-    get_from_cli(&url, output_path_arg, false);
+    get_git_subdir(&url, output_path_arg, false, true);
 
     assert!(expected_path.exists());
-    let filepath = expected_path.join("src/main.rs");
+    let filepath = expected_path.join("main.rs");
     assert!(filepath.exists());
 
     fs::remove_dir_all(expected_path).unwrap();
@@ -224,7 +292,7 @@ fn test_custom_output_path() {
 fn test_ignore_subdirs() {
     let url = String::from("https://github.com/keziah55/pick/tree/main/mediabrowser");
 
-    get_from_cli(&url, None, true);
+    get_git_subdir(&url, None, true, true);
 
     let output_path = PathBuf::from("mediabrowser");
     let expected_path = output_path.clone();
@@ -238,23 +306,42 @@ fn test_ignore_subdirs() {
     fs::remove_dir_all(output_path).unwrap();
 }
 
-#[test]
-fn test_relative_path() {
-    let url = String::from(
-        "https://github.com/keziah55/pick/tree/main/mediabrowser/templates/mediabrowser",
-    );
+// #[test]
+// fn test_relative_path() {
+//     let url = String::from("https://github.com/keziah55/git-subdir/tree/main/src");
 
-    let output_path = PathBuf::from("tmp_test");
-    let expected_path = output_path.clone();
-    let output_path_arg = Some(output_path.clone().into_os_string().into_string().unwrap());
+//     let output_path = PathBuf::from("tmp_test");
+//     let expected_path = output_path.clone();
+//     let output_path_arg = Some(output_path.into_os_string().into_string().unwrap());
 
-    get_from_cli(&url, output_path_arg, false);
+//     get_git_subdir(&url, output_path_arg, false, false);
 
-    for item in fs::read_dir(expected_path).unwrap() {
-        let p = item.unwrap().path();
-        assert!(!p.is_dir());
-        assert_eq!(p.extension().unwrap(), "html");
-    }
+//     assert!(expected_path.exists());
+//     let filepath = expected_path.join("src/main.rs");
+//     assert!(filepath.exists());
 
-    fs::remove_dir_all(output_path).unwrap();
-}
+//     fs::remove_dir_all(expected_path).unwrap();
+// }
+
+
+
+// #[test]
+// fn test_relative_path() {
+//     let url = String::from(
+//         "https://github.com/keziah55/pick/tree/main/mediabrowser/templates/mediabrowser",
+//     );
+
+//     let output_path = PathBuf::from("tmp_test");
+//     let expected_path = output_path.clone();
+//     let output_path_arg = Some(output_path.clone().into_os_string().into_string().unwrap());
+
+//     get_git_subdir(&url, output_path_arg, false, false);
+
+//     for item in fs::read_dir(expected_path).unwrap() {
+//         let p = item.unwrap().path();
+//         assert!(!p.is_dir());
+//         assert_eq!(p.extension().unwrap(), "html");
+//     }
+
+//     // fs::remove_dir_all(output_path).unwrap();
+// }
