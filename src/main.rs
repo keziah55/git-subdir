@@ -211,13 +211,20 @@ fn download_file(url: &GitHubUrl, filename: &PathBuf) {
 }
 
 /// Download directory from github
+/// 
+/// # Arguments
+/// 
+/// * `url` - String pointing directory in github repo
+/// * `output` - Optional directory to write to. If `None`, inferred from url.
+/// * `ignore_subdirs` - If `true`, don't download sub directories.
+/// * `preserve_path_structure` - If `true`, 
 pub fn get_git_subdir(
     url: &String,
     output: Option<String>,
     ignore_subdirs: bool,
     preserve_path_structure: bool,
 ) {
-    println!("{preserve_path_structure}");
+    println!("preserve_path_structure={preserve_path_structure}");
     let url = GitHubUrl::new(url);
 
     // if not given output path, use basename from url
@@ -231,9 +238,9 @@ pub fn get_git_subdir(
     }
 
     let relative_to = if preserve_path_structure {
-        Some(&url)
-    } else {
         None
+    } else {
+        Some(&url)
     };
 
     get_git_dir(&url, &output_path, ignore_subdirs, relative_to);
@@ -241,15 +248,17 @@ pub fn get_git_subdir(
 
 fn main() {
     let cli = Cli::parse();
-    get_git_subdir(&cli.url, cli.output, cli.ignore_subdirs, !cli.relative);
+    get_git_subdir(&cli.url, cli.output, cli.ignore_subdirs, cli.relative);
 }
 
 // TESTS
 #[test]
 fn test_default_args() {
+    // test default behaviour
+
     let url = String::from("https://github.com/keziah55/ABBAd_day/tree/master/ABBAd_day");
 
-    get_git_subdir(&url, None, false, true);
+    get_git_subdir(&url, None, false, false);
 
     let expected_path = PathBuf::from("ABBAd_day");
     assert!(expected_path.exists());
@@ -263,13 +272,15 @@ fn test_default_args() {
 
 #[test]
 fn test_custom_output_path() {
+    // test set custom outdir for contents
+
     let url = String::from("https://github.com/keziah55/git-subdir/tree/main/src");
 
     let output_path = PathBuf::from("tmp_test");
     let expected_path = output_path.clone();
     let output_path_arg = Some(output_path.into_os_string().into_string().unwrap());
 
-    get_git_subdir(&url, output_path_arg, false, true);
+    get_git_subdir(&url, output_path_arg, false, false);
 
     assert!(expected_path.exists());
     let filepath = expected_path.join("main.rs");
@@ -280,9 +291,11 @@ fn test_custom_output_path() {
 
 #[test]
 fn test_ignore_subdirs() {
+    // test don't get subdirs
+
     let url = String::from("https://github.com/keziah55/pick/tree/main/mediabrowser");
 
-    get_git_subdir(&url, None, true, true);
+    get_git_subdir(&url, None, true, false);
 
     let output_path = PathBuf::from("mediabrowser");
     let expected_path = output_path.clone();
@@ -298,28 +311,26 @@ fn test_ignore_subdirs() {
 
 #[test]
 fn test_relative_path() {
+    // test preserving dir strcuture, relative to git repo root
+
     let url = String::from(
         "https://github.com/keziah55/pick/tree/main/mediabrowser/templates/mediabrowser",
     );
 
     let output_path = PathBuf::from("tmp_test");
-    let expected_path = output_path.clone();
+    let mut expected_path = output_path.clone();
     let output_path_arg = Some(output_path.clone().into_os_string().into_string().unwrap());
 
-    get_git_subdir(&url, output_path_arg, false, false);
+    get_git_subdir(&url, output_path_arg, false, true);
+
+    expected_path.push("templates/mediabrowser");
+
+    assert!(expected_path.exists());
 
     for item in fs::read_dir(expected_path).unwrap() {
         let p = item.unwrap().path();
-        assert!(p.is_dir());
-        for sub_item in fs::read_dir(p).unwrap() {
-            let sub_p = sub_item.unwrap().path();
-            assert!(sub_p.is_dir());
-            for sub_sub_item in fs::read_dir(sub_p).unwrap() {
-                let sub_sub_p = sub_sub_item.unwrap().path();
-                assert!(!sub_sub_p.is_dir());
-                assert_eq!(sub_sub_p.extension().unwrap(), "html");
-            }
-        }
+        assert!(!p.is_dir());
+        assert_eq!(p.extension().unwrap(), "html");
     }
 
     fs::remove_dir_all(output_path).unwrap();
