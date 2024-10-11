@@ -13,14 +13,12 @@ you may want to move or symlink to a location in your `PATH`
 
 ## Usage
 
-For example (using the `git-subdir` executable),
+For example, to download just the `src` directory from this repo, (using the `git-subdir` executable):
 ```
 git-subdir https://github.com/keziah55/git-subdir/tree/main/src
 ```
-downloads just the `src` directory from this repo.
 
-See
+For additional options, see
 ```
 git-subdir --help
 ```
-for additional options.
