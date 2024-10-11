@@ -114,13 +114,13 @@ impl fmt::Display for GitHubUrl {
 }
 
 /// Make directory.
-/// 
+///
 /// # Arguments
-/// 
+///
 /// * `path` - Dir path to make
-/// 
+///
 /// # Panics
-/// 
+///
 /// If failed to make directory.
 fn make_dir(path: &Path) {
     fs::create_dir_all(path)
@@ -128,11 +128,11 @@ fn make_dir(path: &Path) {
 }
 
 /// Download all items in github directory.
-/// 
+///
 /// Note this function is called recursively.
-/// 
+///
 /// # Arguments
-/// 
+///
 /// * `url` - [`GitHubUrl`] struct pointing to directory.
 /// * `output` - Directory to write to.
 /// * `ignore_subdirs` - If `true`, don't download sub directories.
@@ -167,12 +167,12 @@ fn get_subdir(
 }
 
 /// Download item.
-/// 
+///
 /// If item is a file, simply download it. If it is a directory, download all contents
 /// (unless `ignore_subdirs` is true).
-/// 
+///
 /// # Arguments
-/// 
+///
 /// * `base_url` - [`GitHubUrl`] to download.
 /// * `item_info` - Map of info about the item to be downloaded.
 /// * `output_path` - Path to write to.
@@ -229,9 +229,9 @@ fn download(
 }
 
 /// Download given file
-/// 
+///
 /// # Arguments
-/// 
+///
 /// * `url` - [`GitHubUrl`] struct. This function gets the raw version of the url.
 /// * `filename` - Path to write to.
 fn download_file(url: &GitHubUrl, filename: &PathBuf) {
@@ -249,9 +249,9 @@ fn download_file(url: &GitHubUrl, filename: &PathBuf) {
 }
 
 /// Download directory from github
-/// 
+///
 /// # Arguments
-/// 
+///
 /// * `url` - String pointing directory in github repo.
 /// * `output` - Optional directory to write to. If `None`, inferred from url.
 /// * `ignore_subdirs` - If `true`, don't download sub directories.
