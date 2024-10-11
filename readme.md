@@ -24,8 +24,3 @@ See
 git-subdir --help
 ```
 for additional options.
-
-## TODO
-
-- Support gitlab urls
-- Write files relative to given link, rather than repo root (to avoid extra directory layers)
