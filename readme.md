@@ -9,11 +9,11 @@ cargo build --release
 ```
 
 This downloads dependencies and builds the executable `target/release/git-subdir`, which 
-you may want to move or symlink to a location in your `PATH`
+you may want to move or symlink to a location in your `PATH`.
 
 ## Usage
 
-For example, to download just the `src` directory from this repo, (using the `git-subdir` executable):
+For example, to download just the `src` directory from this repo, (using the `git-subdir` executable built as described above)
 ```
 git-subdir https://github.com/keziah55/git-subdir/tree/main/src
 ```
