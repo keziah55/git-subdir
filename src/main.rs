@@ -36,19 +36,30 @@ struct GitHubUrl {
 
 impl GitHubUrl {
     /// Create new GitHubUrl instance
-    pub fn new(url: &String) -> GitHubUrl {
+    pub fn new(url: &String) -> Result<GitHubUrl, String> {
         let prefix = "https://github.com/";
         if !url.starts_with(prefix) {
-            panic!("'{}' is not a github url", url);
+            return Err(format!(
+                "\x1b[91mError:\x1b[0m '{}' is not a github url",
+                url
+            ));
         }
 
-        let url_parts: Vec<&str> = url.strip_prefix(prefix).unwrap().split("/").collect();
-        if url_parts.len() < 4 {
-            panic!("'{}' is not a url to a directory within a github repo", url);
+        let url_parts: Vec<&str> = url.strip_prefix(prefix).unwrap().split("/").filter(|s| s.len() > 0).collect();
+        if url_parts.len() == 2 {
+            return Err(format!(
+                "\x1b[91mError:\x1b[0m '{}' is a top-level git repo.\nInstead, try:\n  \x1b[94mgit clone {}\x1b[0m",
+                url, url
+            ));
+        } else if url_parts.len() < 4 {
+            return Err(format!(
+                "\x1b[91mError:\x1b[0m '{}' is not a url to a directory within a github repo",
+                url
+            ));
         }
 
         if url_parts[2] != "tree" {
-            panic!("Cannot parse url '{}'", url);
+            return Err(format!("\x1b[91mError:\x1b[0m cannot parse url '{}'", url));
         }
 
         let username = String::from(url_parts[0]);
@@ -56,12 +67,12 @@ impl GitHubUrl {
         let branch = String::from(url_parts[3]);
         let path = PathBuf::from(url_parts[4..].join("/"));
 
-        GitHubUrl {
+        Ok(GitHubUrl {
             username,
             repo_name,
             branch,
             path,
-        }
+        })
     }
 
     /// Return url to directory
@@ -91,7 +102,7 @@ impl GitHubUrl {
     /// Return new GitHubUrl with `part` appended
     pub fn join(&self, part: &str) -> GitHubUrl {
         let new_url = format!("{}/{}", self.url(), part);
-        GitHubUrl::new(&new_url)
+        GitHubUrl::new(&new_url).unwrap()
     }
 
     /// Return url to get raw file
@@ -218,11 +229,11 @@ fn download(
                 get_subdir(&url, output_path, ignore_subdirs, relative_to)
             }
         }
-        "symlink_file" => {
-            println!("Skipping symlink '{}'", url.path.to_str().unwrap());
-        }
-        "symlink_directory" => {
-            println!("Skipping symlink '{}'", url.path.to_str().unwrap());
+        "symlink_file" | "symlink_directory" => {
+            println!(
+                "\x1b[93mSkipping symlink '{}'\x1b[0m",
+                url.path.to_str().unwrap()
+            );
         }
         _ => panic!("Cannot handle item type '{}'", item_type),
     }
@@ -262,26 +273,30 @@ pub fn get_git_subdir(
     ignore_subdirs: bool,
     preserve_path_structure: bool,
 ) {
-    println!("preserve_path_structure={preserve_path_structure}");
     let url = GitHubUrl::new(url);
 
-    // if not given output path, use basename from url
-    let output_path = match output {
-        Some(path) => PathBuf::from(path),
-        None => PathBuf::from(url.basename()),
-    };
+    match url {
+        Ok(url) => {
+            // if not given output path, use basename from url
+            let output_path = match output {
+                Some(path) => PathBuf::from(path),
+                None => PathBuf::from(url.basename()),
+            };
 
-    if !output_path.exists() {
-        make_dir(&output_path);
+            if !output_path.exists() {
+                make_dir(&output_path);
+            }
+
+            let relative_to = if preserve_path_structure {
+                None
+            } else {
+                Some(&url)
+            };
+
+            get_subdir(&url, &output_path, ignore_subdirs, relative_to);
+        }
+        Err(s) => println!("{s}"),
     }
-
-    let relative_to = if preserve_path_structure {
-        None
-    } else {
-        Some(&url)
-    };
-
-    get_subdir(&url, &output_path, ignore_subdirs, relative_to);
 }
 
 fn main() {
@@ -290,86 +305,107 @@ fn main() {
 }
 
 // TESTS
-#[test]
-fn test_default_args() {
-    // test default behaviour
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rstest::rstest;
+    #[test]
+    fn test_default_args() {
+        // test default behaviour
 
-    let url = String::from("https://github.com/keziah55/ABBAd_day/tree/master/ABBAd_day");
+        let url = String::from("https://github.com/keziah55/ABBAd_day/tree/master/ABBAd_day");
 
-    get_git_subdir(&url, None, false, false);
+        get_git_subdir(&url, None, false, false);
 
-    let expected_path = PathBuf::from("ABBAd_day");
-    assert!(expected_path.exists());
-    let expected_files = vec!["ABBAd_day.ino", "fileArray.ino"];
-    for filename in expected_files {
-        assert!(expected_path.join(filename).exists());
+        let expected_path = PathBuf::from("ABBAd_day");
+        assert!(expected_path.exists());
+        let expected_files = vec!["ABBAd_day.ino", "fileArray.ino"];
+        for filename in expected_files {
+            assert!(expected_path.join(filename).exists());
+        }
+
+        fs::remove_dir_all(expected_path).unwrap();
     }
 
-    fs::remove_dir_all(expected_path).unwrap();
-}
+    #[test]
+    fn test_custom_output_path() {
+        // test set custom outdir for contents
 
-#[test]
-fn test_custom_output_path() {
-    // test set custom outdir for contents
+        let url = String::from("https://github.com/keziah55/git-subdir/tree/main/src");
 
-    let url = String::from("https://github.com/keziah55/git-subdir/tree/main/src");
+        let output_path = PathBuf::from("tmp_test");
+        let expected_path = output_path.clone();
+        let output_path_arg = Some(output_path.into_os_string().into_string().unwrap());
 
-    let output_path = PathBuf::from("tmp_test");
-    let expected_path = output_path.clone();
-    let output_path_arg = Some(output_path.into_os_string().into_string().unwrap());
+        get_git_subdir(&url, output_path_arg, false, false);
 
-    get_git_subdir(&url, output_path_arg, false, false);
+        assert!(expected_path.exists());
+        let filepath = expected_path.join("main.rs");
+        assert!(filepath.exists());
 
-    assert!(expected_path.exists());
-    let filepath = expected_path.join("main.rs");
-    assert!(filepath.exists());
-
-    fs::remove_dir_all(expected_path).unwrap();
-}
-
-#[test]
-fn test_ignore_subdirs() {
-    // test don't get subdirs
-
-    let url = String::from("https://github.com/keziah55/pick/tree/main/mediabrowser");
-
-    get_git_subdir(&url, None, true, false);
-
-    let output_path = PathBuf::from("mediabrowser");
-    let expected_path = output_path.clone();
-    assert!(expected_path.exists());
-    for item in fs::read_dir(expected_path).unwrap() {
-        let p = item.unwrap().path();
-        assert!(!p.is_dir(), "{:#?} is dir", p);
-        assert_eq!(p.extension().unwrap(), "py");
+        fs::remove_dir_all(expected_path).unwrap();
     }
 
-    fs::remove_dir_all(output_path).unwrap();
-}
+    #[test]
+    fn test_ignore_subdirs() {
+        // test don't get subdirs
 
-#[test]
-fn test_relative_path() {
-    // test preserving dir strcuture, relative to git repo root
+        let url = String::from("https://github.com/keziah55/pick/tree/main/mediabrowser");
 
-    let url = String::from(
-        "https://github.com/keziah55/pick/tree/main/mediabrowser/templates/mediabrowser",
-    );
+        get_git_subdir(&url, None, true, false);
 
-    let output_path = PathBuf::from("tmp_test");
-    let mut expected_path = output_path.clone();
-    let output_path_arg = Some(output_path.clone().into_os_string().into_string().unwrap());
+        let output_path = PathBuf::from("mediabrowser");
+        let expected_path = output_path.clone();
+        assert!(expected_path.exists());
+        for item in fs::read_dir(expected_path).unwrap() {
+            let p = item.unwrap().path();
+            assert!(!p.is_dir(), "{:#?} is dir", p);
+            assert_eq!(p.extension().unwrap(), "py");
+        }
 
-    get_git_subdir(&url, output_path_arg, false, true);
-
-    expected_path.push("templates/mediabrowser");
-
-    assert!(expected_path.exists());
-
-    for item in fs::read_dir(expected_path).unwrap() {
-        let p = item.unwrap().path();
-        assert!(!p.is_dir());
-        assert_eq!(p.extension().unwrap(), "html");
+        fs::remove_dir_all(output_path).unwrap();
     }
 
-    fs::remove_dir_all(output_path).unwrap();
+    #[test]
+    fn test_relative_path() {
+        // test preserving dir strcuture, relative to git repo root
+
+        let url = String::from(
+            "https://github.com/keziah55/pick/tree/main/mediabrowser/templates/mediabrowser",
+        );
+
+        let output_path = PathBuf::from("tmp_test");
+        let mut expected_path = output_path.clone();
+        let output_path_arg = Some(output_path.clone().into_os_string().into_string().unwrap());
+
+        get_git_subdir(&url, output_path_arg, false, true);
+
+        expected_path.push("templates/mediabrowser");
+
+        assert!(expected_path.exists());
+
+        for item in fs::read_dir(expected_path).unwrap() {
+            let p = item.unwrap().path();
+            assert!(!p.is_dir());
+            assert_eq!(p.extension().unwrap(), "html");
+        }
+
+        fs::remove_dir_all(output_path).unwrap();
+    }
+
+    #[rstest]
+    #[case(String::from("https://some-other.url"), "is not a github url")]
+    #[case(String::from("https://github.com/username/repo"), "is a top-level git repo")]
+    #[case(String::from("https://github.com/username/"), "is not a url to a directory within a github repo")]
+    #[case(String::from("https://github.com/username/repo/not_tree/branch.dir"), "cannot parse url")]
+    fn test_invalid_url(#[case] url: String, #[case] expected_msg: &str) {
+        // let url = String::from("https://some-other.url");
+        let result = GitHubUrl::new(&url);
+        assert!(result.is_err());
+
+        match result {
+            Err(s) => assert!(s.contains(expected_msg), "'{}' does not contain '{}'", s, expected_msg),
+            Ok(_) => (),
+        }
+    }
 }
