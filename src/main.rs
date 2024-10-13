@@ -1,3 +1,7 @@
+//! git-subdir
+//! 
+//! Simple command line tool to download a sub directory from a github repo
+
 use clap::Parser;
 use reqwest;
 use scraper::{Html, Selector};
@@ -29,6 +33,7 @@ struct Cli {
 
 struct GitHubUrl {
     site: String,
+    raw_site: String,
     username: String,
     repo_name: String,
     branch: String,
@@ -67,6 +72,7 @@ impl GitHubUrl {
         }
 
         let site = String::from(prefix);
+        let raw_site = String::from("https://raw.githubusercontent.com");
         let username = String::from(url_parts[0]);
         let repo_name = String::from(url_parts[1]);
         let branch = String::from(url_parts[3]);
@@ -74,6 +80,7 @@ impl GitHubUrl {
 
         Ok(GitHubUrl {
             site,
+            raw_site,
             username,
             repo_name,
             branch,
@@ -93,6 +100,19 @@ impl GitHubUrl {
         )
     }
 
+    /// Return url to get raw file
+    pub fn raw_url(&self) -> String {
+        format!(
+            "{}/{}/{}/{}/{}",
+            self.raw_site,
+            self.username,
+            self.repo_name,
+            self.branch,
+            self.path.to_str().unwrap()
+        )
+        // format!("{}?raw=true", self.url())
+    }
+
     /// Return the name of the requested dir
     pub fn basename(&self) -> String {
         String::from(
@@ -110,11 +130,6 @@ impl GitHubUrl {
     pub fn join(&self, part: &str) -> GitHubUrl {
         let new_url = format!("{}/{}", self.url(), part);
         GitHubUrl::new(&new_url).unwrap()
-    }
-
-    /// Return url to get raw file
-    pub fn as_raw_url(&self) -> String {
-        format!("{}?raw=true", self.url())
     }
 }
 
@@ -138,6 +153,15 @@ impl fmt::Display for GitHubUrl {
 /// * `msg` - Error message content
 fn make_error_message(msg: String) -> String {
     format!("\x1b[91mError:\x1b[0m {}", msg)
+}
+
+/// Returns a formatted warning message
+///
+/// # Arguments
+///
+/// * `msg` - Error message content
+fn make_warning_message(msg: String) -> String {
+    format!("\x1b[93m{}\x1b[0m", msg)
 }
 
 /// Format the given string to appear in blue.
@@ -225,10 +249,12 @@ fn download(
     let item_name = item_info["name"].as_str().unwrap();
     let item_path = PathBuf::from(item_info["path"].as_str().unwrap());
 
+    // url to item
     let url = base_url.join(item_name);
 
+    // filename to write to
+    // create from `output_path` with either abridged or full path
     let mut filename = PathBuf::from(output_path);
-
     let rel_path = match relative_to {
         Some(rel_url) => String::from(
             item_path
@@ -244,21 +270,19 @@ fn download(
             .collect::<Vec<&str>>()
             .join("/"),
     };
-
     filename.push(rel_path);
 
     match item_type {
-        "file" => download_file(base_url, &filename),
+        "file" => download_file(&url, &filename),
         "directory" => {
             if !ignore_subdirs {
                 get_subdir(&url, output_path, ignore_subdirs, relative_to)
             }
         }
         "symlink_file" | "symlink_directory" => {
-            println!(
-                "\x1b[93mSkipping symlink '{}'\x1b[0m",
-                url.path.to_str().unwrap()
-            );
+            let msg =
+                make_warning_message(format!("Skipping symlink '{}'", url.path.to_str().unwrap()));
+            println!("{}", msg);
         }
         _ => panic!("Cannot handle item type '{}'", item_type),
     }
@@ -271,9 +295,11 @@ fn download(
 /// * `url` - [`GitHubUrl`] struct. This function gets the raw version of the url.
 /// * `filename` - Path to write to.
 fn download_file(url: &GitHubUrl, filename: &PathBuf) {
-    let raw_url = url.as_raw_url();
+    let raw_url = url.raw_url();
 
-    let text = reqwest::blocking::get(raw_url).unwrap().text().unwrap();
+    let response = reqwest::blocking::get(raw_url).unwrap();
+
+    let text = response.text().unwrap();
 
     if !filename.parent().unwrap().exists() {
         make_dir(filename.clone().parent().unwrap());
@@ -367,6 +393,11 @@ mod tests {
         assert!(expected_path.exists());
         let filepath = expected_path.join("main.rs");
         assert!(filepath.exists());
+
+        // check content of file
+        let contents = fs::read_to_string(filepath).unwrap();
+        let first_line = contents.split_once("\n").unwrap().0;
+        assert_eq!(first_line, "//! git-subdir", "expected '//! git-subdir'; got '{}", first_line);
 
         fs::remove_dir_all(expected_path).unwrap();
     }
