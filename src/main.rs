@@ -1,6 +1,6 @@
-//! git-subdir
+//! # git-subdir
 //! 
-//! Simple command line tool to download a sub directory from a github repo
+//! Simple command line tool to download a sub directory from a github repo.
 
 use clap::Parser;
 use reqwest;
@@ -397,7 +397,8 @@ mod tests {
         // check content of file
         let contents = fs::read_to_string(filepath).unwrap();
         let first_line = contents.split_once("\n").unwrap().0;
-        assert_eq!(first_line, "//! git-subdir", "expected '//! git-subdir'; got '{}", first_line);
+        let expected = "//! # git-subdir";
+        assert_eq!(first_line, expected, "expected '{}'; got '{}", expected, first_line);
 
         fs::remove_dir_all(expected_path).unwrap();
     }
@@ -424,7 +425,7 @@ mod tests {
 
     #[test]
     fn test_relative_path() {
-        // test preserving dir strcuture, relative to git repo root
+        // test preserving dir structure, relative to git repo root
 
         let url = String::from(
             "https://github.com/keziah55/pick/tree/main/mediabrowser/templates/mediabrowser",
