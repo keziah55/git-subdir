@@ -39,27 +39,30 @@ impl GitHubUrl {
     pub fn new(url: &String) -> Result<GitHubUrl, String> {
         let prefix = "https://github.com/";
         if !url.starts_with(prefix) {
-            return Err(format!(
-                "\x1b[91mError:\x1b[0m '{}' is not a github url",
-                url
-            ));
+            return Err(make_error_message(format!("'{}' is not a github url", url)));
         }
 
-        let url_parts: Vec<&str> = url.strip_prefix(prefix).unwrap().split("/").filter(|s| s.len() > 0).collect();
+        let url_parts: Vec<&str> = url
+            .strip_prefix(prefix)
+            .unwrap()
+            .split("/")
+            .filter(|s| s.len() > 0)
+            .collect();
         if url_parts.len() == 2 {
-            return Err(format!(
-                "\x1b[91mError:\x1b[0m '{}' is a top-level git repo.\nInstead, try:\n  \x1b[94mgit clone {}\x1b[0m",
-                url, url
-            ));
+            return Err(make_error_message(format!(
+                "{}' is a top-level git repo.\nInstead, try:\n  {}",
+                url,
+                highlight_message(format!("git clone {}", url))
+            )));
         } else if url_parts.len() < 4 {
-            return Err(format!(
-                "\x1b[91mError:\x1b[0m '{}' is not a url to a directory within a github repo",
+            return Err(make_error_message(format!(
+                "'{}' is not a url to a directory within a github repo",
                 url
-            ));
+            )));
         }
 
         if url_parts[2] != "tree" {
-            return Err(format!("\x1b[91mError:\x1b[0m cannot parse url '{}'", url));
+            return Err(make_error_message(format!("cannot parse url '{}'", url)));
         }
 
         let username = String::from(url_parts[0]);
@@ -122,6 +125,24 @@ impl fmt::Display for GitHubUrl {
             self.path.to_str().unwrap()
         )
     }
+}
+
+/// Return a formatted error message.
+///
+/// # Arguments
+///
+/// * `msg` - Error message content
+fn make_error_message(msg: String) -> String {
+    format!("\x1b[91mError:\x1b[0m {}", msg)
+}
+
+/// Format the given string to appear in blue.
+///
+/// # Arguments
+///
+/// * `msg` - Message content
+fn highlight_message(msg: String) -> String {
+    format!("\x1b[94m{}\x1b[0m", msg)
 }
 
 /// Make directory.
@@ -395,16 +416,30 @@ mod tests {
 
     #[rstest]
     #[case(String::from("https://some-other.url"), "is not a github url")]
-    #[case(String::from("https://github.com/username/repo"), "is a top-level git repo")]
-    #[case(String::from("https://github.com/username/"), "is not a url to a directory within a github repo")]
-    #[case(String::from("https://github.com/username/repo/not_tree/branch.dir"), "cannot parse url")]
+    #[case(
+        String::from("https://github.com/username/repo"),
+        "is a top-level git repo"
+    )]
+    #[case(
+        String::from("https://github.com/username/"),
+        "is not a url to a directory within a github repo"
+    )]
+    #[case(
+        String::from("https://github.com/username/repo/not_tree/branch.dir"),
+        "cannot parse url"
+    )]
     fn test_invalid_url(#[case] url: String, #[case] expected_msg: &str) {
         // let url = String::from("https://some-other.url");
         let result = GitHubUrl::new(&url);
         assert!(result.is_err());
 
         match result {
-            Err(s) => assert!(s.contains(expected_msg), "'{}' does not contain '{}'", s, expected_msg),
+            Err(s) => assert!(
+                s.contains(expected_msg),
+                "'{}' does not contain '{}'",
+                s,
+                expected_msg
+            ),
             Ok(_) => (),
         }
     }
