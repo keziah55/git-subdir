@@ -1,5 +1,5 @@
 //! # git-subdir
-//! 
+//!
 //! Simple command line tool to download a sub directory from a github repo.
 
 use clap::Parser;
@@ -221,9 +221,31 @@ fn get_subdir(
             .map(|item| item.as_object().unwrap());
 
         for item in items {
-            download(url, item, output_path, ignore_subdirs, relative_to);
+            let (item_type, item_name, item_path) = unpack_item_info(item);
+            download(
+                url,
+                item_type,
+                item_name,
+                item_path,
+                output_path,
+                ignore_subdirs,
+                relative_to,
+            );
         }
     }
+}
+
+/// Unpack values from json item.
+///
+/// Returns tuple of (item_type, item_name, item_path)
+fn unpack_item_info(
+    item_info: &serde_json::Map<String, serde_json::Value>,
+) -> (&str, &str, PathBuf) {
+    let item_type = item_info["contentType"].as_str().unwrap();
+    let item_name = item_info["name"].as_str().unwrap();
+    let item_path = PathBuf::from(item_info["path"].as_str().unwrap());
+
+    (item_type, item_name, item_path)
 }
 
 /// Download item.
@@ -240,14 +262,17 @@ fn get_subdir(
 /// * `relative_to` - Optional url to write relative path to.
 fn download(
     base_url: &GitHubUrl,
-    item_info: &serde_json::Map<String, serde_json::Value>,
+    // item_info: &serde_json::Map<String, serde_json::Value>,
+    item_type: &str,
+    item_name: &str,
+    item_path: PathBuf,
     output_path: &PathBuf,
     ignore_subdirs: bool,
     relative_to: Option<&GitHubUrl>,
 ) {
-    let item_type = item_info["contentType"].as_str().unwrap();
-    let item_name = item_info["name"].as_str().unwrap();
-    let item_path = PathBuf::from(item_info["path"].as_str().unwrap());
+    // let item_type = item_info["contentType"].as_str().unwrap();
+    // let item_name = item_info["name"].as_str().unwrap();
+    // let item_path = PathBuf::from(item_info["path"].as_str().unwrap());
 
     // url to item
     let url = base_url.join(item_name);
@@ -398,7 +423,11 @@ mod tests {
         let contents = fs::read_to_string(filepath).unwrap();
         let first_line = contents.split_once("\n").unwrap().0;
         let expected = "//! # git-subdir";
-        assert_eq!(first_line, expected, "expected '{}'; got '{}", expected, first_line);
+        assert_eq!(
+            first_line, expected,
+            "expected '{}'; got '{}",
+            expected, first_line
+        );
 
         fs::remove_dir_all(expected_path).unwrap();
     }
@@ -478,5 +507,45 @@ mod tests {
             ),
             Ok(_) => (),
         }
+    }
+
+    #[rstest]
+    #[case("symlink_file")]
+    #[case("symlink_directory")]
+    fn test_dont_download_symlink(#[case] symlink_type: &str) {
+
+        // item_name and item_path are invalid values, so if this actually tried to download them, it would fail
+        // but we're expecting `download` to do nothing when given a "symlink_*" type
+        let base_url = GitHubUrl::new(&String::from("https://github.com/keziah55/git-subdir/tree/main/src")).unwrap();
+        let item_path = PathBuf::from("mock/path");
+        let output_path = PathBuf::from(".");
+
+        download(
+            &base_url,
+            symlink_type,
+            "file.txt",
+            item_path,
+            &output_path,
+            true,
+            None
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "Cannot handle item type 'invalid_value'")]
+    fn test_download_panic() {
+        let base_url = GitHubUrl::new(&String::from("https://github.com/keziah55/git-subdir/tree/main/src")).unwrap();
+        let item_path = PathBuf::from("mock/path");
+        let output_path = PathBuf::from(".");
+
+        download(
+            &base_url,
+            "invalid_value",
+            "file.txt",
+            item_path,
+            &output_path,
+            true,
+            None
+        );
     }
 }
