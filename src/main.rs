@@ -28,6 +28,7 @@ struct Cli {
 }
 
 struct GitHubUrl {
+    site: String,
     username: String,
     repo_name: String,
     branch: String,
@@ -37,7 +38,7 @@ struct GitHubUrl {
 impl GitHubUrl {
     /// Create new GitHubUrl instance
     pub fn new(url: &String) -> Result<GitHubUrl, String> {
-        let prefix = "https://github.com/";
+        let prefix = "https://github.com";
         if !url.starts_with(prefix) {
             return Err(make_error_message(format!("'{}' is not a github url", url)));
         }
@@ -65,12 +66,14 @@ impl GitHubUrl {
             return Err(make_error_message(format!("cannot parse url '{}'", url)));
         }
 
+        let site = String::from(prefix);
         let username = String::from(url_parts[0]);
         let repo_name = String::from(url_parts[1]);
         let branch = String::from(url_parts[3]);
         let path = PathBuf::from(url_parts[4..].join("/"));
 
         Ok(GitHubUrl {
+            site,
             username,
             repo_name,
             branch,
@@ -81,7 +84,8 @@ impl GitHubUrl {
     /// Return url to directory
     pub fn url(&self) -> String {
         format!(
-            "https://github.com/{}/{}/tree/{}/{}",
+            "{}/{}/{}/tree/{}/{}",
+            self.site,
             self.username,
             self.repo_name,
             self.branch,
