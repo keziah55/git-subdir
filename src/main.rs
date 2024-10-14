@@ -512,7 +512,7 @@ mod tests {
     #[rstest]
     #[case("symlink_file")]
     #[case("symlink_directory")]
-    fn test_dont_download_symlink(#[case] symlink_type: &str) {
+    fn test_skip_symlink(#[case] symlink_type: &str) {
 
         // item_name and item_path are invalid values, so if this actually tried to download them, it would fail
         // but we're expecting `download` to do nothing when given a "symlink_*" type
