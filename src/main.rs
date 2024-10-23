@@ -110,7 +110,6 @@ impl GitHubUrl {
             self.branch,
             self.path.to_str().unwrap()
         )
-        // format!("{}?raw=true", self.url())
     }
 
     /// Return the name of the requested dir
@@ -189,7 +188,7 @@ fn make_dir(path: &Path) {
 
 /// Download all items in github directory.
 ///
-/// Note this function is called recursively.
+/// Note that this function is called recursively.
 ///
 /// # Arguments
 ///
@@ -270,10 +269,6 @@ fn download(
     ignore_subdirs: bool,
     relative_to: Option<&GitHubUrl>,
 ) {
-    // let item_type = item_info["contentType"].as_str().unwrap();
-    // let item_name = item_info["name"].as_str().unwrap();
-    // let item_path = PathBuf::from(item_info["path"].as_str().unwrap());
-
     // url to item
     let url = base_url.join(item_name);
 
